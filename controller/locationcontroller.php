@@ -11,8 +11,8 @@
 
 namespace OCA\Maps\Controller;
 
+use OCA\Maps\Db\LocationManager;
 use \OCP\IRequest;
-use \OCP\AppFramework\Http\TemplateResponse;
 use \OCP\AppFramework\Http\JSONResponse;
 use \OCP\AppFramework\ApiController;
 
@@ -20,9 +20,8 @@ use \OCP\AppFramework\ApiController;
 class LocationController extends ApiController {
 
 	private $userId;
-	private $cacheManager;
 	private $locationManager;
-	public function __construct($appName, IRequest $request,$locationManager,$userId) {
+	public function __construct($appName, IRequest $request, LocationManager $locationManager, $userId) {
 		parent::__construct($appName, $request);
 		$this->locationManager = $locationManager;
 		$this->userId = $userId;
@@ -40,23 +39,22 @@ class LocationController extends ApiController {
 	 * @CORS
 	 * @PublicPage
 	 */
-	public function update() {
-		$params = array('user' => $this -> userId);
-		$location['lat'] = $this->params('lat');
-		$location['lng'] = $this->params('lon');
-		if(((string)(float)$this->params('timestamp') === $this->params('timestamp'))) {
-			if(strtotime(date('d-m-Y H:i:s',$this->params('timestamp'))) === (int)$this->params('timestamp')) {
-				$location['timestamp'] = (int)$this->params('timestamp');
-			} elseif(strtotime(date('d-m-Y H:i:s',$this->params('timestamp')/1000)) === (int)floor($this->params('timestamp')/1000)) {
-				$location['timestamp'] = (int)floor($this->params('timestamp')/1000);
+	public function update($lat, $lon, $timestamp, $hdop, $altitude, $speed, $hash) {
+		$location['lat'] = $lat;
+		$location['lng'] = $lon;
+		if((string)(float)$timestamp === $timestamp) {
+			if(strtotime(date('d-m-Y H:i:s',$timestamp)) === (int)$timestamp) {
+				$location['timestamp'] = (int)$timestamp;
+			} elseif(strtotime(date('d-m-Y H:i:s',$timestamp/1000)) === (int)floor($timestamp/1000)) {
+				$location['timestamp'] = (int)floor($timestamp/1000);
 			}
 		} else {
-			$location['timestamp'] = strtotime($this->params('timestamp'));
+			$location['timestamp'] = strtotime($timestamp);
 		}
-		$location['hdop'] = $this->params('hdop');
-		$location['altitude'] = $this->params('altitude');
-		$location['speed'] = $this->params('speed');
-		$location['device_hash'] = $this->params('hash');
+		$location['hdop'] = $hdop;
+		$location['altitude'] = $altitude;
+		$location['speed'] = $speed;
+		$location['device_hash'] = $hash;
 
 		/* Only save location if hash exists in db */
 		if ( $this->locationManager->checkHash($location['device_hash']) ){
@@ -67,8 +65,8 @@ class LocationController extends ApiController {
 	/**
 	 *  @NoAdminRequired
 	 */	
-	public function addDevice(){
-		$deviceName = $this->params('name');
+	public function addDevice($name){
+		$deviceName = $name;
 		$hash = uniqid();
 		$deviceId = $this->locationManager->addDevice($deviceName,$hash,$this->userId);
 		$response = array('id'=> $deviceId,'hash'=>$hash);
@@ -86,11 +84,11 @@ class LocationController extends ApiController {
 	 * @NoAdminRequired
 	 * @NoCSRFRequired
 	 */		
-	public function loadLocations(){
-		$deviceIds = explode(',',$this->params('devices'));
-		$from = ($this->params('from')) ? strtotime($this->params('from')) : null;
-		$till = ($this->params('till')!='') ? strtotime($this->params('till')) : strtotime('now');
-		$limit = ($this->params('limit')!='') ? (int) $this->params('limit') : 2000;
+	public function loadLocations($devices, $from, $till, $limit){
+		$deviceIds = explode(',',$devices);
+		$from = ($from) ? strtotime($from) : null;
+		$till = ($till != '') ? strtotime($till) : strtotime('now');
+		$limit = ($limit != '') ? (int) $limit : 2000;
 		$response = array();
 		foreach($deviceIds as $device){
 			$response[$device] = $this->locationManager->loadHistory($device,$from,$till,$limit);
@@ -100,10 +98,9 @@ class LocationController extends ApiController {
 	/**
 	 * @NoAdminRequired
 	 */		
-	public function removeDevice(){
-		$deviceId = $this->params('deviceId');
-		$response = $this->locationManager->remove($deviceId,$this->userId);
-		return new JSONResponse($response);
+	public function removeDevice($deviceId){
+		$this->locationManager->remove($deviceId,$this->userId);
+		return new JSONResponse();
 	}
 
 }
