@@ -21,8 +21,12 @@
 \OCP\Util::addStyle('maps', 'awsome-markers/leaflet.awesome-markers');
 \OCP\Util::addScript('maps', '3rdparty/leaflet/plugins/leaflet.awesome-markers.min');
 \OCP\Util::addScript('maps', '3rdparty/leaflet/plugins/Leaflet.MakiMarkers');
+\OCP\Util::addScript('maps', '3rdparty/leaflet/plugins/leaflet-omnivore');
 \OCP\Util::addScript('maps', 'dateTimePicker');
 \OCP\Util::addScript('maps', 'script');
+\OCP\Util::addScript('maps', '3rdparty/imageinfo-lib');
+\OCP\Util::addScript('maps', '3rdparty/binaryajax-lib');
+\OCP\Util::addScript('maps', '3rdparty/exif');
 
 \OCP\Util::addStyle('maps', 'leaflet/leaflet');
 \OCP\Util::addStyle('maps', 'leaflet/leaflet-compass.min');
@@ -30,21 +34,36 @@
 \OCP\Util::addStyle('maps', 'leaflet/leaflet-routing-machine');
 \OCP\Util::addStyle('maps', 'style');
 \OCP\Util::addStyle('maps', 'font-awesome.min');
-
-
+\OCP\Util::addStyle('maps', 'leaflet/Control.Geocoder');
 ?>
- 
+
 <div id="app">
 	<div id="app-navigation">
 		<div id="searchContainer">
-				
-		</div>	<br />
+			<div id="suggestions">
+			</div>
+		</div>
+		<br />
 		<ul class="with-icon">
 			<?php if(\OCP\App::isEnabled('contacts')) : ?>
 			<li>
 				<a class='contactLayer icon-contacts-dark' id='contactMenu' data-layer="contacts">Contacts</a>
 			</li>
 			<?php endif; ?>
+			<li>
+				<a class='trackLayer icon-link toggle-children' data-layer="tracks">Show GPX-Tracks</a>
+				<ul id="track-options" class="hidden">
+					<li><a class="trackOptions" data-layerGroup="tracks" data-layerValue="load">Load from MyTracks folder</a></li>
+					<li><a class="trackOptions" data-layerGroup="tracks" data-layerValue="choose">Choose from files App</a></li>
+					<li><a class="trackOptions" data-layerGroup="tracks" data-layerValue="upload">Upload GPX File</a></li>
+				</ul>
+			</li>
+			<li>
+				<a class='photoLayer icon-link toggle-children' id='photoMenu' data-layer="photos">Photos</a>
+                <ul id="photo-folders" class="hidden">
+					<li><a class="photoLoader">Load from Folder</a></li>
+				</ul>
+			</li>
 			<li>
 				<a class='main-cat-layer icon-info toggle-children' data-layer="amenity">Amenity</a>
 				<ul id="amenity-items" class="hidden"></ul>
@@ -68,7 +87,7 @@
 				</ul>
 			</li>
 		</ul>
-		
+
 		<?php if(\OCP\App::isEnabled('contacts')) : ?>
 		<div id="loadingContacts" style="display:none">
 			<div id="progressBar"><div></div></div>
@@ -83,7 +102,7 @@
 					<a id="tracking-settings">Location tracking settings</a>
 			</div>
 		</div>
-	  
+
   	</div>
 	<div id="app-content">
 		<div id="map">
@@ -97,7 +116,7 @@
 	<table id="trackingDevices">
 		<thead><th>Name</th><th>Hash</th></thead>
 		<tbody>
-			
+
 		</tbody>
 	</table>
 </div>

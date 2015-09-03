@@ -15,17 +15,21 @@ use \OCP\IRequest;
 use \OCP\AppFramework\Http\TemplateResponse;
 use \OCP\AppFramework\Controller;
 use \OCA\Maps\Db\CacheManager;
+use \OCP\Files\Folder;
+use \OCP\Files\IRootFolder;
 
 class PageController extends Controller {
 
 	private $userId;
 	private $cacheManager;
 	private $locationManager;
-	public function __construct($appName, IRequest $request, $userId, $cacheManager,$locationManager) {
+	private $rootF;
+	public function __construct($appName, IRequest $request, $rootF, $userId, $cacheManager,$locationManager) {
 		parent::__construct($appName, $request);
 		$this -> userId = $userId;
 		$this -> cacheManager = $cacheManager;
 		$this -> locationManager = $locationManager;
+		$this -> rootF = $rootF;
 	}
 
 	/**
@@ -49,6 +53,11 @@ class PageController extends Controller {
 			$csp->addAllowedImageDomain('https://api.tiles.mapbox.com');
 			// inline images
 			$csp->addAllowedScriptDomain('data:');
+			
+			$csp->addAllowedConnectDomain('https://nominatim.openstreetmap.org');
+			//allow search API
+			$csp->addAllowedScriptDomain('https://nominatim.openstreetmap.org');
+			
 			$response->setContentSecurityPolicy($csp);
 		}
 		return $response;
@@ -99,7 +108,7 @@ class PageController extends Controller {
 		$kw = $this -> params('search');
 		$bbox = $this -> params('bbox');
 		$response = array('contacts'=>array(),'nodes'=>array(),'addresses'=>array());
-		
+
 		$contacts = $cm -> search($kw, array('FN', 'ADR'));
 		foreach ($contacts as $r) {
 			$data = array();
@@ -113,13 +122,14 @@ class PageController extends Controller {
 		}
 		$response['nodes'] = $this->bboxSearch($kw, $bbox);
 		$addresses = $this->doAdresslookup(urlencode($kw));
-		foreach($addresses as $address){
+		/*foreach($addresses as $address){
 			array_push($response['addresses'],$address);
 			if($address->osm_type=="node"){
 			}
-		}
+		}*/
+		$response['addresses'] = $addresses;
 		//$response['addresses'] = (array)($this->doAdresslookup($kw));
-		
+
 		return $response;
 	}
 
@@ -132,9 +142,9 @@ class PageController extends Controller {
    $lat = $this->params('lat');
    $lng = $this->params('lng');
    $zoom = $this->params('zoom');
-   
+
    $hash = md5($lat.','.$lng.'@'.$zoom);
-   
+
    $checkCache = $this -> checkGeoCache($hash);
   if(!$checkCache){
       $url = 'http://nominatim.openstreetmap.org/reverse/?format=json&email=brantje@gmail.com&lat='.$lat.'&lng='. $lng.'&zoom=67108864';
@@ -147,7 +157,7 @@ class PageController extends Controller {
    }
    echo $response;
    die();
-  } 
+  }
 	/**
 	 * Simply method that posts back the payload of the request
 	 * @NoAdminRequired
@@ -196,7 +206,6 @@ class PageController extends Controller {
 			$r = $checkCache;
 		}
 		return $r;
-
 	}
 
 	/**
@@ -210,7 +219,7 @@ class PageController extends Controller {
 		$ch = curl_init();
 		curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
 		curl_setopt($ch, CURLOPT_HEADER, 0);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 900); 
+    curl_setopt($ch, CURLOPT_TIMEOUT, 900);
 		curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
 		if ($userAgent) {
 			curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US; rv:1.9.1.2) Gecko/20090729 Firefox/3.5.2 GTB5');
@@ -229,4 +238,75 @@ class PageController extends Controller {
 
 	}
 
+	public function getContainingImages(){
+		$folder = $this->params('folder');
+		$path = '/' . $this->userId . '/files/Photos/' . $folder;
+		$imgs = $this->rootF->get($path);
+		$nodes = $imgs->searchByMime("image");
+		foreach($nodes as $n){
+			$arr = array();
+			$dir = $n->getParent()->getInternalPath();
+			if(substr($dir, 0, 6) == 'files/') $dir = substr($dir, 6);
+			$arr['dir'] = $dir;
+			$arr['file'] = $n->getName();
+			$files[] = $arr;
+		}
+		return $files;
+	}
+
+	public function getFolders(){
+		$path = '/' . $this->userId . '/files/Photos';
+		if($this->rootF->nodeExists($path)) {
+			$folder = $this->rootF->get($path);
+		} else {
+			$folder = $this->rootF->newFolder($path);
+		}
+		$nodes = $folder->getDirectoryListing();
+		foreach($nodes as $n){
+			if($n->getType() == \OCP\Files\FileInfo::TYPE_FOLDER){
+				$name = $n->getName();
+				/*if(substr($name, 0, 1) === '/') $name = substr($name, 1);
+				//remove leading files/
+				if(substr($name, 0, 13) == 'files/Photos/') $name = substr($name, 13);
+				$pos = strpos($name, '/');
+				$name = substr($name, 0, $pos);
+				if($name == '') $name = '/';
+				if(!in_array($name, $tmp)){
+					$arr = array();
+					$arr['name'] = $name;
+					$files[] = $arr;
+					$tmp[] = $name;
+				}*/
+				$arr = array();
+				$arr['name'] = $name;
+				$files[] = $arr;
+			}
+		}
+		return $files;
+	}
+
+	public function getGpsFiles(){
+		$path = '/' . $this->userId . '/files/MyTracks';
+		if ($this->rootF->nodeExists($path)) {
+			$folder = $this->rootF->get($path);
+		} else {
+			$folder = $this->rootF->newFolder($path);
+		}
+		$nodes = $folder->getDirectoryListing();
+		$suffix = ".gpx";
+		foreach($nodes as $n){
+			if($n->getType() == \OCP\Files\FileInfo::TYPE_FILE){
+				$name = $n->getName();
+				if(substr_compare($name, $suffix, -strlen($suffix)) === 0){
+					$arr = array();
+					$dir = $n->getParent()->getInternalPath();
+					if(substr($dir, 0, 6) == 'files/') $dir = substr($dir, 6);
+					$arr['dir'] = $dir;
+					$arr['file'] = $n->getName();
+					$files[] = $arr;
+				}
+			}
+		}
+		return $files;
+	}
 }

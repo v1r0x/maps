@@ -28,11 +28,15 @@ $application->registerRoutes($this, array('routes' => array(
     array('name' => 'page#adresslookup', 'url' => '/adresslookup', 'verb' => 'GET'),
     array('name' => 'page#geodecode', 'url' => '/geodecode', 'verb' => 'GET'),
     array('name' => 'page#search', 'url' => '/search', 'verb' => 'GET'),
-    
-    array('name' => 'location#update', 'url' => '/api/1.0/location/update', 'verb' => 'GET'), 
-    array('name' => 'location#add_device', 'url' => '/api/1.0/location/adddevice', 'verb' => 'POST'), 
-    array('name' => 'location#remove_device', 'url' => '/api/1.0/location/removedevice', 'verb' => 'POST'), 
-    array('name' => 'location#load_devices', 'url' => '/api/1.0/location/loadDevices', 'verb' => 'GET'), 
-    array('name' => 'location#load_locations', 'url' => '/api/1.0/location/loadLocations', 'verb' => 'GET'), 
-    
+    array('name' => 'page#getgpsfiles', 'url' => '/getgps', 'verb' => 'GET'),
+    array('name' => 'page#getfolders', 'url' => '/getfolders', 'verb' => 'GET'),
+    array('name' => 'page#getcontainingimages', 'url' => '/getimages', 'verb' => 'GET'),
+	
+
+    array('name' => 'location#update', 'url' => '/api/1.0/location/update', 'verb' => 'GET'),
+    array('name' => 'location#add_device', 'url' => '/api/1.0/location/adddevice', 'verb' => 'POST'),
+    array('name' => 'location#remove_device', 'url' => '/api/1.0/location/removedevice', 'verb' => 'POST'),
+    array('name' => 'location#load_devices', 'url' => '/api/1.0/location/loadDevices', 'verb' => 'GET'),
+    array('name' => 'location#load_locations', 'url' => '/api/1.0/location/loadLocations', 'verb' => 'GET'),
+
 )));

@@ -9,7 +9,7 @@
  */
 /** Testing
  */
-
+ 
 Array.prototype.clean = function(deleteValue) {
 	for (var i = 0; i < this.length; i++) {
 		if (this[i] == deleteValue) {
@@ -100,6 +100,7 @@ Array.prototype.unique = function() {
 			zoom : oldZoom,
 			layers : [mapQuest]
 		});
+		
 		map.options.minZoom = 3;
 		var hash = new L.Hash(map);
 		/*var baseMaps = {
@@ -109,6 +110,11 @@ Array.prototype.unique = function() {
 		 "Airial" : airial
 		 };*/
 
+		L.Control.geocoder({
+			collapsed: false,
+			position: "topleft",
+			placeholder: "Search for...",
+		}).addTo(map);
 		map.addControl(new L.Control.Compass());
 		map.addControl(new L.Control.Gps({
 			minZoom : 14,
@@ -137,6 +143,52 @@ Array.prototype.unique = function() {
 		$(".leaflet-routing-container").appendTo("#searchContainer");
 		$('.geocoder-0').attr('completiontype', 'local');
 
+		
+		(function() {
+			if($('#contactMenu').length == 0) return;
+			Maps.addressbooks = [];
+			$.get(OC.generateUrl('apps/contacts/addressbooks/'), function(r) {
+				$.each(r.addressbooks, function() {
+					var book = {
+						'id' : this.id,
+						'backend' : this.backend
+					}
+					Maps.addressbooks.push(book);
+				})
+				//Load addresses in array
+				$.each(Maps.addressbooks, function(ai) {
+					$.get(OC.generateUrl('/apps/contacts/addressbook/' + this.backend + '/' + this.id + '/contacts'), function(r) {
+						$.each(r.contacts, function(ci) {
+							var name = this.data.FN[0].value;
+							var adr = {};
+							var orgAdr = {};
+							if(this.data.ADR){
+								for(var i=0; i< this.data.ADR.length; i++){
+									var currAddr = this.data.ADR[i].value;
+									//remove empty cells (didn't work with delete or any other function...thus: ugly code
+									for (var j=currAddr.length-1; j>=0; j--) {
+										if (currAddr[j] === null || currAddr[j] === undefined || currAddr[j] === "") {
+											currAddr.splice(j,1);
+										}
+									}
+									adr[i] = currAddr.toString().replace(/,/g, ", ");
+									orgAdr[i] = this.data.ADR[i].value;
+								}
+								
+							}
+							if(!adr[0]) return true;
+							var addr = {
+								'name': name,
+								'add': adr,
+								'orgAdd': orgAdr
+							};
+							Maps.addresses.push(addr);
+						});
+					});
+				});
+			})
+		})();
+		
 		// properly style as input field
 		$('#searchContainer').find('input').attr('type', 'text');
 
@@ -206,6 +258,84 @@ Array.prototype.unique = function() {
 			}
 		})
 
+		$('.geocoder-0').on('input', function(event){
+			var inp = $('.geocoder-0').val().toLowerCase();
+			if(inp.length < 3){
+				$("#suggestions").fadeOut('slow', function(){
+					$("#suggestions").css('visibility', 'hidden');
+				});
+				return;
+			}
+			var splitInp = inp.split(" ");
+			var contactAddrs = [];
+			for(var i=0; i<Maps.addresses.length; i++){
+				var adIndex = -1;
+				for(var k=0; k<splitInp.length; k++){
+					var found = false;
+					if(Maps.addresses[i].name.toLowerCase().match(splitInp[k])){
+						found = true;
+					}
+					var len = Object.keys(Maps.addresses[i].add).length;
+					for(var j=0; j<len; j++){
+						if(Maps.addresses[i].add[j].toLowerCase().match(splitInp[k])){
+							found = true;
+							adIndex = j;
+						}
+					}
+					if(!found) break;
+				}
+				if(found){
+					var tmpOut = Maps.addresses[i].name;
+					if(adIndex >= 0) tmpOut += ": " + Maps.addresses[i].add[adIndex];
+					contactAddrs.push(tmpOut);
+				}
+			}
+			
+			$('#suggestions').css('visibility', 'visible');
+			$('#suggestions').hide();
+			$('#suggestions').fadeIn('slow');
+			var myNode = document.getElementById('suggestions');
+			while(myNode.firstChild){
+				myNode.removeChild(myNode.firstChild);
+			}
+			var list = document.createElement('ul');
+			for(var i=0; i<contactAddrs.length; i++){
+				var item = document.createElement('li');
+				item.appendChild(document.createTextNode(contactAddrs[i]));
+				list.appendChild(item);
+			}
+			document.getElementById('suggestions').appendChild(list);
+		})
+		
+		$('.geocoder-0').keyup(function(event){
+			if(event.keyCode == 13){
+				$.getJSON("https://nominatim.openstreetmap.org/search",
+					{
+						format: 'json',
+						q: $('.geocoder-0').val()
+					},
+					function(data) {
+						if(data.length > 0){
+							var res = data[0];
+							var loc = {
+								addresses: {
+									"0": {
+										lat: res.lat,
+										lon: res.lon,
+										display_name: res.display_name,
+										place_id: res.place_id
+									}
+								},
+								contacts: {},
+								nodes: {}
+							}
+							mapSearch.showResultsOnMap(loc);
+						}
+					}
+				);
+			}
+		})
+
 		$(document).on('click', '.toggle-children', function(e) {
 			var subCat = $(this).parent().find('ul');
 			if (subCat.is(":visible")) {
@@ -229,11 +359,164 @@ Array.prototype.unique = function() {
 				}
 			})
 		});
+
+		$.getJSON(OC.generateUrl('/apps/maps/getfolders'), null, function parseFolders(r) {
+			r = r.sort()
+			iconHTML = '';
+			$.each(r, function(i, layer) {
+				if (this != "") {
+					$('#photo-folders').append('<li><a class="photoFolder" data-layerGroup="' + 'photos' + '" data-layerValue="' + this.name + '">' + this.name + '</a></li>')
+				}
+			})
+		})
+
+		function convertLatLon(latD, lonD, latDir, lonDir){
+			var lon = lonD[0] + lonD[1]/60 + lonD[2]/(60*60);
+			var lat = latD[0] + latD[1]/60 + latD[2]/(60*60);
+			if (latDir == "S") {
+				lat = lat * -1;
+			}
+			if(lonDir == "W"){
+				lon = lon * -1;
+			}
+			return {
+				lat: lat,
+				lon: lon
+			};
+		}
+
+		function addImageWithExif(dir, file){
+			var picUrl = OC.generateUrl('apps/files/ajax/download.php?dir={dir}&files={file}', {
+				dir: dir,
+				file: file
+			});
+			new ImageInfo(
+				picUrl,
+				(function (element){
+					return function (imageinfo){
+						var exif = imageinfo.getAllFields().exif;
+						if(isNaN(exif.GPSLatitude[0]) || isNaN(exif.GPSLongitude[0])){
+							alert("isnan");
+							return;
+						}
+						var latD = exif.GPSLatitude;
+						var lonD = exif.GPSLongitude;
+						var latDir = exif.GPSLatitudeRef;
+						var lonDir = exif.GPSLongitudeRef;
+						var latlon = convertLatLon(latD, lonD, latDir, lonDir);
+						var photoIcon = L.icon({
+							iconUrl: picUrl,
+							iconSize : [42, 49],
+							iconAnchor : [21, 49],
+							popupAnchor : [0, -49],
+							className : 'photo-marker'
+						});
+
+						var galleryUrl = OC.generateUrl(
+							'apps/galleryplus/#{dir}/{file}',
+							{dir: dir, file: file}
+						);
+
+						var markerHTML = '<b>' + file + "</b>";
+						markerHTML += '<br />Latitude: ' + latlon.lat + " " + latDir;
+						markerHTML += '<br />Longitude: ' + latlon.lon + " " + lonDir;
+						markerHTML += '<br />Altitude: ' + exif.GPSAltitude + 'm';
+						markerHTML += '<br /><a href="' + galleryUrl + '">Open in Gallery</a>';
+						var marker = L.marker([latlon.lat, latlon.lon], {
+							icon : photoIcon
+						});
+						toolKit.addMarker(marker, markerHTML);
+					};
+				})(this)
+			).readFileData();
+		}
+
 		$('.contactLayer').clickToggle(function() {
 			Maps.loadAdressBooks()
 		}, function() {
 			toolKit.removeFavMarkers()
 		});
+		
+		function loadGpxFromUrl(url){
+			gpxLayer = omnivore.gpx(url)
+			.on('ready', function() {
+				//map.fitBounds(gpxLayer.getBounds());
+				gpxLayer.eachLayer(function(layer){
+					var content = '<h2>GPX Point</h2>' + '<p>';
+					(layer.feature.properties.name) ? content += 'Name: ' + layer.feature.properties.name + '<br/>' : '';
+					if(layer.feature.properties.time){
+						var dt = new Date(Date.parse(layer.feature.properties.time))
+						content += 'Time: ' +  dt.toLocaleString();
+					}
+					content += '</p>';
+					layer.bindPopup(content);
+				});
+			}).addTo(map);
+		}
+
+		$(document).on('click', '.trackOptions', function() {
+			var layerGroup = $(this).attr('data-layerGroup');
+			var layerValue = $(this).attr('data-layerValue');
+			if(layerGroup != "tracks") return;
+			switch(layerValue){
+				case "load":
+					$.getJSON(OC.generateUrl('/apps/maps/getgps'), null, function parseGpxFiles(r) {
+						for(i=0; i<r.length; i++){
+							var track = r[i];
+							var trackUrl = OC.generateUrl('apps/files/ajax/download.php?dir={dir}&files={file}', {
+								dir: track.dir,
+								file: track.file
+							});
+							loadGpxFromUrl(trackUrl);
+						}
+					})
+					break;
+				case "choose":
+					OC.dialogs.filepicker("Select your GPX files", function addGpxFiles(path){
+						for(i=0; i<path.length; i++){
+							var p = path[i];
+							if(p.indexOf('/') === 0) p = p.substr(1);
+							var separator = p.lastIndexOf('/');
+							var dir = p.substr(0, separator);
+							var file = p.substr(separator + 1);
+							var trackUrl = OC.generateUrl('apps/files/ajax/download.php?dir={dir}&files={file}', {
+								dir: dir,
+								file: file
+							})
+							loadGpxFromUrl(trackUrl);
+						}
+					}, true, "application/octet-stream", true);
+					break;
+				case "upload":
+					alert("upload");
+					//TODO
+					break;
+			}
+		});
+
+		$(document).on('click', '.photoLoader', function() {
+			OC.dialogs.filepicker("Select your photo", function addJpegFile(path){
+				for(i=0; i<path.length; i++){
+					var p = path[i];
+					if(p.indexOf('/') === 0) p = p.substr(1);
+					var separator = p.lastIndexOf('/');
+					var dir = p.substr(0, separator);
+					var file = p.substr(separator + 1);
+					addImageWithExif(dir, file);
+				}
+			}, true, ["image/jpeg", "image/png", "image/gif"], true);
+		});
+
+		$(document).on('click', '.photoFolder', function() {
+			var layerValue = $(this).attr('data-layerValue');
+			$.getJSON(OC.generateUrl('/apps/maps/getimages'), {folder: layerValue}, function parseImages(r) {
+				for(i=0; i<r.length; i++){
+					var path = r[i];
+					addImageWithExif(path.dir, path.file);
+				}
+			})
+		});
+
 		$(document).on('click', '.subLayer', function() {
 			var layerGroup = $(this).attr('data-layerGroup');
 			var layerValue = $(this).attr('data-layerValue');
@@ -435,6 +718,7 @@ Array.prototype.unique = function() {
 		_ids : [],
 		getSearchResults : function(data, callback) {
 			$.getJSON(OC.generateUrl('/apps/maps/search'), data, function renderSearchResults(r) {
+				r.addresses = { "0": r.addresses[0] }; //only show first hit
 				callback(r)
 			})
 		},
@@ -499,6 +783,7 @@ Array.prototype.unique = function() {
 				toolKit.addMarker(marker, markerHTML)
 				mapSearch.searchItems.push(marker);
 				mapSearch._ids.push(this.place_id)
+				map.panTo(new L.LatLng(this.lat, this.lon));
 
 			});
 
@@ -533,6 +818,7 @@ Array.prototype.unique = function() {
 
 	Maps = {
 		addressbooks : [],
+		addresses : [],
 		tempArr : [],
 		tempCounter : 0,
 		tempTotal : 0,
@@ -559,6 +845,38 @@ Array.prototype.unique = function() {
 					}
 					Maps.addressbooks.push(book);
 				})
+				//Load addresses in array
+				$.each(Maps.addressbooks, function(ai) {
+					$.get(OC.generateUrl('/apps/contacts/addressbook/' + this.backend + '/' + this.id + '/contacts'), function(r) {
+						$.each(r.contacts, function(ci) {
+							var name = this.data.FN[0].value;
+							var adr = {};
+							var orgAdr = {};
+							if(this.data.ADR){
+								for(var i=0; i< this.data.ADR.length; i++){
+									var currAddr = this.data.ADR[i].value;
+									//remove empty cells (didn't work with delete or any other function...thus: ugly code
+									for (var j=currAddr.length-1; j>=0; j--) {
+										if (currAddr[j] === null || currAddr[j] === undefined || currAddr[j] === "") {
+											currAddr.splice(j,1);
+										}
+									}
+									adr[i] = currAddr.toString().replace(/,/g, ", ");
+									orgAdr[i] = this.data.ADR[i].value;
+								}
+								
+							}
+							if(!adr[0]) return true;
+							var addr = {
+								'name': name,
+								'add': adr,
+								'orgAdd': orgAdr
+							};
+							Maps.addresses.push(addr);
+						});
+					});
+				});
+				//end
 				Maps.loadContacts();
 			})
 		},
@@ -834,7 +1152,7 @@ Array.prototype.unique = function() {
 			//map.removeLayer(Maps.activeLayers[layer])
 		}
 	}
-
+	
 	toolKit = {
 		addMarker : function(marker, markerHTML, openPopup) {
 			var openPopup = (openPopup) ? true : false;
@@ -1040,7 +1358,7 @@ Array.prototype.unique = function() {
 			var markerHTML = '<b>' + contact.fn + "</b>";
 			var street = (contact.adr.street) ? contact.adr.street : '';
 			var city = (contact.adr.city) ? contact.adr.city : '';
-			markerHTML += '<br />' + street + " " + city;
+			markerHTML += '<br />' + street + ", " + city;
 			markerHTML += (contact.tel) ? '<br />Tel: ' + escape(contact.tel) : '';
 			var marker = L.marker([contact.lat * 1, contact.lon * 1], {
 				icon : iconImage
@@ -1136,4 +1454,3 @@ Array.prototype.unique = function() {
 		}, timeout);
 	}
 })(jQuery, OC);
-
